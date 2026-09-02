@@ -1,0 +1,45 @@
+name: Hygiene
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Reject sensitive tracked file types
+        shell: bash
+        run: |
+          set -euo pipefail
+          bad="$(git ls-files | grep -Ei '\.(apk|aab|apks|jks|keystore|p12|pem|key|har|pcap|pcapng)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "::error::Sensitive or distributable binary file detected."
+            exit 1
+          fi
+
+      - name: Reject obvious credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          pattern='-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}'
+          if git grep -nEI -- "$pattern" -- . ':(exclude).github/workflows/hygiene.yml'; then
+            echo "::error::Potential credential material detected."
+            exit 1
+          fi
+
+      - name: Passed
+        run: echo "Repository hygiene check passed."
