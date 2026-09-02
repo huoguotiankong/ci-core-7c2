@@ -1,0 +1,133 @@
+name: Job A
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - trigger/build.txt
+      - .github/workflows/job-a.yml
+      - scripts/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: job-a-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [0, 1, 2, 3]
+
+    steps:
+      - name: Checkout runner
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          path: runner
+
+      - name: Check bridge configuration
+        id: cfg
+        shell: bash
+        env:
+          SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
+          SOURCE_REF: ${{ secrets.BRIDGE_REF }}
+          SOURCE_TOKEN: ${{ secrets.BRIDGE_READ_TOKEN }}
+          RESULT_TOKEN: ${{ secrets.BRIDGE_RESULT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SOURCE_REPO:-}" ] || [ -z "${SOURCE_REF:-}" ] || [ -z "${SOURCE_TOKEN:-}" ] || [ -z "${RESULT_TOKEN:-}" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "bridge=not-configured"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch private job source
+        if: steps.cfg.outputs.ready == 'true'
+        shell: bash
+        env:
+          SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
+          SOURCE_REF: ${{ secrets.BRIDGE_REF }}
+          SOURCE_TOKEN: ${{ secrets.BRIDGE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash runner/scripts/fetch-source.sh private-src
+
+      - name: Preflight slot
+        if: steps.cfg.outputs.ready == 'true'
+        id: slot
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(tr -cd '0-9' < runner/trigger/build.txt)"
+          if bash private-src/ci/public-runner/should-run.sh "$code" "${{ matrix.slot }}" >/dev/null 2>&1; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Java 17
+        if: steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture Java 17
+        if: steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
+        shell: bash
+        run: echo "MX_JAVA17_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup Java 21
+        if: steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Capture Java 21
+        if: steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
+        shell: bash
+        run: echo "MX_JAVA21_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup Gradle
+        if: steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb
+
+      - name: Execute private job
+        if: steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(tr -cd '0-9' < runner/trigger/build.txt)"
+          bash private-src/ci/public-runner/dispatch-build.sh "$code" "${{ matrix.slot }}" > /tmp/private-job.log 2>&1
+
+      - name: Ensure result envelope
+        if: always() && steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f /tmp/private-result.json ]; then
+            printf '%s\n' '{"schemaVersion":1,"status":"FAIL","classification":"ENVIRONMENT_FAILURE","note":"private dispatcher did not produce a result envelope"}' > /tmp/private-result.json
+          fi
+
+      - name: Store evidence privately
+        if: always() && steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
+        shell: bash
+        env:
+          RESULT_REPO: ${{ secrets.BRIDGE_REPO }}
+          RESULT_TOKEN: ${{ secrets.BRIDGE_RESULT_TOKEN }}
+          RESULT_BRANCH: ci-results
+          RUNNER_SLOT: ${{ matrix.slot }}
+          RUNNER_KIND: a
+        run: |
+          set -euo pipefail
+          bash runner/scripts/publish-result.sh
