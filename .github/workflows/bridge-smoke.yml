@@ -22,9 +22,9 @@ jobs:
       - name: Validate required secrets
         shell: bash
         env:
-          SRC_REPO: ${{ secrets.SRC_REPO || secrets.BRIDGE_REPO }}
-          SRC_REF: ${{ secrets.SRC_REF || secrets.BRIDGE_REF }}
-          SRC_TOKEN: ${{ secrets.SRC_TOKEN || secrets.BRIDGE_READ_TOKEN || secrets.MX_READER_TOKEN }}
+          SRC_REPO: ${{ secrets.BRIDGE_REPO }}
+          SRC_REF: ${{ secrets.BRIDGE_REF }}
+          SRC_TOKEN: ${{ secrets.MX_READER_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$SRC_REPO" || { echo "::error::SRC_REPO is missing"; exit 1; }
@@ -35,9 +35,9 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          repository: ${{ secrets.SRC_REPO || secrets.BRIDGE_REPO }}
-          ref: ${{ secrets.SRC_REF || secrets.BRIDGE_REF }}
-          token: ${{ secrets.SRC_TOKEN || secrets.BRIDGE_READ_TOKEN }}
+          repository: ${{ secrets.BRIDGE_REPO }}
+          ref: ${{ secrets.BRIDGE_REF }}
+          token: ${{ secrets.MX_READER_TOKEN }}
           path: source
           fetch-depth: 1
           persist-credentials: false
