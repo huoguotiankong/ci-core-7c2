@@ -1,6 +1,12 @@
 name: Bridge Smoke
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - trigger/bridge.txt
+      - .github/workflows/bridge-smoke.yml
   workflow_dispatch:
 
 permissions:
