@@ -39,7 +39,7 @@ jobs:
         env:
           SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
           SOURCE_REF: ${{ secrets.BRIDGE_REF }}
-          SOURCE_TOKEN: ${{ secrets.BRIDGE_READ_TOKEN }}
+          SOURCE_TOKEN: ${{ secrets.BRIDGE_READ_TOKEN || secrets.MX_READER_TOKEN }}
           RESULT_TOKEN: ${{ secrets.BRIDGE_RESULT_TOKEN }}
         run: |
           set -euo pipefail
@@ -56,7 +56,7 @@ jobs:
         env:
           SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
           SOURCE_REF: ${{ secrets.BRIDGE_REF }}
-          SOURCE_TOKEN: ${{ secrets.BRIDGE_READ_TOKEN }}
+          SOURCE_TOKEN: ${{ secrets.BRIDGE_READ_TOKEN || secrets.MX_READER_TOKEN }}
         run: |
           set -euo pipefail
           bash runner/scripts/fetch-source.sh private-src
