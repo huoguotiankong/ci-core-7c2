@@ -126,9 +126,7 @@ jobs:
           profile: pixel_7_pro
           emulator-boot-timeout: 600
           disable-animations: true
-          script: |
-            code="$(tr -cd '0-9' < runner/trigger/run.txt)"
-            bash private-src/ci/public-runner/dispatch-android.sh "$code" "${{ matrix.slot }}" > /tmp/private-job.log 2>&1
+          script: bash private-src/ci/public-runner/dispatch-android.sh "$(tr -cd '0-9' < runner/trigger/run.txt)" "${{ matrix.slot }}" > /tmp/private-job.log 2>&1
 
       - name: Ensure result envelope
         if: always() && steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
