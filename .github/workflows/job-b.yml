@@ -134,7 +134,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f /tmp/private-result.json ]; then
-            printf '%s\n' '{"schemaVersion":1,"status":"FAIL","classification":"ENVIRONMENT_FAILURE"}' > /tmp/private-result.json
+            printf '%s\n' '{"schemaVersion":1,"status":"FAIL","classification":"ENVIRONMENT_FAILURE","reasonCode":"OUTER_RUNNER_INTERRUPTION"}' > /tmp/private-result.json
           fi
 
       - name: Print sanitized result
@@ -147,7 +147,7 @@ jobs:
           from pathlib import Path
           p = Path('/tmp/private-result.json')
           data = json.loads(p.read_text(encoding='utf-8'))
-          safe = {k: data.get(k) for k in ('status','classification','taskCode','slot','candidate','elapsedSeconds') if k in data}
+          safe = {k: data.get(k) for k in ('status','classification','reasonCode','taskCode','slot','candidate','elapsedSeconds') if k in data}
           print(json.dumps(safe, separators=(',', ':')))
           PY
 
