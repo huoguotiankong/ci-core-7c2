@@ -39,16 +39,22 @@ jobs:
         env:
           SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
           SOURCE_REF: ${{ secrets.BRIDGE_REF }}
-          SOURCE_TOKEN: ${{ secrets.BRIDGE_READ_TOKEN || secrets.MX_READER_TOKEN }}
+          SOURCE_TOKEN: ${{ secrets.MX_READER_TOKEN }}
           RESULT_TOKEN: ${{ secrets.BRIDGE_RESULT_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${SOURCE_REPO:-}" ] || [ -z "${SOURCE_REF:-}" ] || [ -z "${SOURCE_TOKEN:-}" ] || [ -z "${RESULT_TOKEN:-}" ]; then
+          if [ -z "${SOURCE_REPO:-}" ] || [ -z "${SOURCE_REF:-}" ] || [ -z "${SOURCE_TOKEN:-}" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "result_ready=false" >> "$GITHUB_OUTPUT"
             echo "bridge=not-configured"
             exit 0
           fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
+          if [ -n "${RESULT_TOKEN:-}" ]; then
+            echo "result_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "result_ready=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Fetch private job source
         if: steps.cfg.outputs.ready == 'true'
@@ -56,7 +62,7 @@ jobs:
         env:
           SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
           SOURCE_REF: ${{ secrets.BRIDGE_REF }}
-          SOURCE_TOKEN: ${{ secrets.BRIDGE_READ_TOKEN || secrets.MX_READER_TOKEN }}
+          SOURCE_TOKEN: ${{ secrets.MX_READER_TOKEN }}
         run: |
           set -euo pipefail
           bash runner/scripts/fetch-source.sh private-src
@@ -130,11 +136,25 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f /tmp/private-result.json ]; then
-            printf '%s\n' '{"schemaVersion":1,"status":"FAIL","classification":"ENVIRONMENT_FAILURE","note":"private dispatcher did not produce a result envelope"}' > /tmp/private-result.json
+            printf '%s\n' '{"schemaVersion":1,"status":"FAIL","classification":"ENVIRONMENT_FAILURE"}' > /tmp/private-result.json
           fi
 
-      - name: Store evidence privately
+      - name: Print sanitized result
         if: always() && steps.cfg.outputs.ready == 'true' && steps.slot.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('/tmp/private-result.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          safe = {k: data.get(k) for k in ('status','classification','taskCode','slot','candidate','elapsedSeconds') if k in data}
+          print(json.dumps(safe, separators=(',', ':')))
+          PY
+
+      - name: Store evidence privately
+        if: always() && steps.cfg.outputs.ready == 'true' && steps.cfg.outputs.result_ready == 'true' && steps.slot.outputs.run == 'true'
         shell: bash
         env:
           RESULT_REPO: ${{ secrets.BRIDGE_REPO }}
