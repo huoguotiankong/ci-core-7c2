@@ -98,6 +98,7 @@ jobs:
           fi
 
       - name: Build and verify private package
+        id: package_build
         working-directory: private-src
         shell: bash
         env:
@@ -110,6 +111,29 @@ jobs:
             exit 1
           fi
           echo "Build and verification passed"
+
+      - name: Preserve bounded private diagnostic
+        if: failure() && steps.package_build.outcome == 'failure'
+        shell: bash
+        env:
+          SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
+          GH_TOKEN: ${{ secrets.BRIDGE_RESULT_TOKEN }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/private-build-diagnostic.json"
+          if [ ! -f "$report" ]; then
+            echo "No stage diagnostic available"
+            exit 0
+          fi
+          # The private build creates only fixed categories and bounded task identifiers.
+          jq -e 'type == "object" and (keys == ["failedTasks","reason","stage"]) and (.stage | test("^[A-Z_]+$")) and (.reason | test("^[A-Z_]+$")) and (.failedTasks | length <= 15) and all(.failedTasks[]; test("^:[A-Za-z0-9_:-]{1,180}$"))' "$report" >/dev/null
+          [[ "$(gh api "repos/$SOURCE_REPO" --jq .private 2>/dev/null)" == true ]]
+          jq -n --arg content "$(base64 -w0 "$report")" --arg branch "ci-results" --arg message "Record bounded build diagnostic" '{content:$content,branch:$branch,message:$message}' > "$RUNNER_TEMP/diagnostic-request.json"
+          if ! gh api --method PUT "repos/$SOURCE_REPO/contents/diagnostics/build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json" --input "$RUNNER_TEMP/diagnostic-request.json" > /dev/null 2>&1; then
+            echo "::warning::Unable to preserve private diagnostic"
+          else
+            echo "Bounded diagnostic saved privately"
+          fi
 
       - name: Publish privately
         working-directory: private-src
@@ -140,4 +164,4 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -rf private-src "$RUNNER_TEMP/private-release" "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/sdk.log" "$RUNNER_TEMP/build-private.log" "$RUNNER_TEMP/publish.log" "$RUNNER_TEMP/vault.log" "$RUNNER_TEMP/private-vault.json"
+          rm -rf private-src "$RUNNER_TEMP/private-release" "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/sdk.log" "$RUNNER_TEMP/build-private.log" "$RUNNER_TEMP/publish.log" "$RUNNER_TEMP/vault.log" "$RUNNER_TEMP/private-vault.json" "$RUNNER_TEMP/private-build-diagnostic.json" "$RUNNER_TEMP/diagnostic-request.json"
