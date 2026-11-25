@@ -1,0 +1,7 @@
+{
+  "schema": "mx.comment.update/1",
+  "version": "0.1.3",
+  "sha256": "f8e1f0feb5dcf50ef52ad7f3fd9e3ce5b3dd52f49fac6891e3a0cc97bebb90c3",
+  "minHost": 1073,
+  "notes": "起点手机站段评规则测试：取消 PC 会话依赖，使用手机站公开段评统计与列表。保留搜索、目录及本地回退；实际接口待真机验证。"
+}
