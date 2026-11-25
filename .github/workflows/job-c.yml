@@ -75,7 +75,7 @@ jobs:
           SOURCE_TOKEN: ${{ secrets.MX_READER_TOKEN }}
           RESULT_TOKEN: ${{ secrets.BRIDGE_RESULT_TOKEN }}
           MX_READER_SIGNING_PASSWORD: ${{ secrets.MX_READER_SIGNING_PASSWORD }}
-          MODE: ${{ (github.event_name == 'push' && github.event.head_commit.message == 'ci: initialize job c once' && 'initialize') || inputs.mode || 'build' }}
+          MODE: ${{ (github.event_name == 'push' && github.event.head_commit.message == 'init-job-c-once' && 'initialize') || inputs.mode || 'build' }}
         run: |
           set -euo pipefail
           if ! python3 ci/release/signing-vault.py prepare "$MODE" > "$RUNNER_TEMP/vault.log" 2>&1; then
