@@ -1,7 +1,7 @@
 {
   "schema": "mx.comment.update/1",
-  "version": "0.1.4",
-  "sha256": "8b088972df362de93bbaaeff57180d338b090be50710014a16e0ff2c33578806",
-  "minHost": 1073,
-  "notes": "测试修复：恢复手机站官方章节的正常匿名会话初始化，使用站点正常下发的 CSRF 参数；搜索和目录不变。API_REJECTED 的具体服务端原因尚未确认。仅更新插件，无需升级 APK。"
+  "version": "0.1.5",
+  "sha256": "e903a713c038c65226ffaee820ab4edbb8ec9039cf1dbe0ca688ae3c712d3b76",
+  "minHost": 1074,
+  "notes": "配合新版宿主修正评论响应结构兼容，取消失败的强制会话初始化。真实段评仍待验证；需要 MX阅读 0.1.7-beta4。"
 }
