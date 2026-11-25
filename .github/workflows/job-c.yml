@@ -99,13 +99,14 @@ jobs:
           tag="$(jq -er .tag "$dir/release.json")"
           commit="$(jq -er .commit "$dir/release.json")"
           version="$(jq -er .version "$dir/release.json")"
+          title="$(jq -er .title "$dir/release.json")"
           notes="$(jq -er .notes "$dir/release.json")"
           apk="$(jq -er .apk "$dir/release.json")"
           source="$(jq -er .source "$dir/release.json")"
           [[ "$(gh api "repos/$SOURCE_REPO" --jq .private 2>/dev/null)" == true ]]
           [[ "$commit" == "$(git rev-parse HEAD)" ]]
           [[ "$tag" == "v$version" ]]
-          if ! gh release create "$tag" --repo "$SOURCE_REPO" --target "$commit" --title "Beta $version" --notes-file "$notes" --prerelease "$apk" "$source" "$dir/CERT_SHA256.txt" "$dir/SHA256SUMS.txt" > "$RUNNER_TEMP/publish.log" 2>&1; then
+          if ! gh release create "$tag" --repo "$SOURCE_REPO" --target "$commit" --title "$title" --notes-file "$notes" --prerelease "$apk" "$source" "$dir/CERT_SHA256.txt" "$dir/SHA256SUMS.txt" > "$RUNNER_TEMP/publish.log" 2>&1; then
             echo "::error::Private release failed; existing releases are not overwritten"
             exit 1
           fi
