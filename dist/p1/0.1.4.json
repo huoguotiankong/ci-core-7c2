@@ -1,0 +1,1 @@
+{"schema":"mx.comment.plugin/1","manifest":{"id":"qidian","provider":"qidian","name":"Qidian mobile reviews","version":"0.1.4","apiVersion":1,"allowedHosts":["m.qidian.com"],"capabilities":["searchBooks","listChapters","listParagraphComments"]},"script":"// mx-native:qidian-reviews/2\n{\"route\":\"mobile-majax\",\"session\":\"chapter\"}"}
