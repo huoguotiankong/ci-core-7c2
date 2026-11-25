@@ -126,7 +126,7 @@ jobs:
             exit 0
           fi
           # The private build creates only fixed categories and bounded task identifiers.
-          jq -e 'type == "object" and (keys == ["failedTasks","reason","stage"]) and (.stage | test("^[A-Z_]+$")) and (.reason | test("^[A-Z_]+$")) and (.failedTasks | length <= 15) and all(.failedTasks[]; test("^:[A-Za-z0-9_:-]{1,180}$"))' "$report" >/dev/null
+          jq -e 'type == "object" and ((keys == ["failedTasks","reason","stage"]) or (keys == ["compilerErrors","failedTasks","reason","stage"] and (.compilerErrors | type == "array" and length <= 20) and all(.compilerErrors[]; (keys == ["column","file","kind","line"]) and (.file | test("^[A-Za-z][A-Za-z0-9_]{0,100}\\.kt$")) and (.line | type == "number" and . >= 0 and . <= 999999 and . == floor) and (.column | type == "number" and . >= 0 and . <= 999999 and . == floor) and (.kind | test("^(UNRESOLVED_REFERENCE|TYPE_MISMATCH|ACCESS|OVERLOAD|OVERRIDE|SYNTAX|OTHER)$"))))) and (.stage | test("^[A-Z_]+$")) and (.reason | test("^[A-Z_]+$")) and (.failedTasks | length <= 15) and all(.failedTasks[]; test("^:[A-Za-z0-9_:-]{1,180}$"))' "$report" >/dev/null
           [[ "$(gh api "repos/$SOURCE_REPO" --jq .private 2>/dev/null)" == true ]]
           jq -n --arg content "$(base64 -w0 "$report")" --arg branch "ci-results" --arg message "Record bounded build diagnostic" '{content:$content,branch:$branch,message:$message}' > "$RUNNER_TEMP/diagnostic-request.json"
           if ! gh api --method PUT "repos/$SOURCE_REPO/contents/diagnostics/build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json" --input "$RUNNER_TEMP/diagnostic-request.json" > /dev/null 2>&1; then
