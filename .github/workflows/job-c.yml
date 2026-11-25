@@ -1,0 +1,118 @@
+name: Job C
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [trigger/release.txt]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: job-c
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 115
+    steps:
+      - name: Validate bridge configuration
+        shell: bash
+        env:
+          SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
+          SOURCE_TOKEN: ${{ secrets.MX_READER_TOKEN }}
+          RESULT_TOKEN: ${{ secrets.BRIDGE_RESULT_TOKEN }}
+          SIGNING_BUNDLE: ${{ secrets.MX_READER_SIGNING_BUNDLE }}
+          CERT_PIN: ${{ vars.MX_READER_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$SOURCE_REPO" || -z "$SOURCE_TOKEN" || -z "$RESULT_TOKEN" || -z "$SIGNING_BUNDLE" || -z "$CERT_PIN" ]]; then
+            echo "::error::Missing bridge or signing configuration"
+            exit 1
+          fi
+          private="$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPO" --jq .private 2>/dev/null)"
+          [[ "$private" == true ]] || { echo "::error::Private source required"; exit 1; }
+
+      - name: Fetch exact private candidate
+        shell: bash
+        env:
+          SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
+          SOURCE_TOKEN: ${{ secrets.MX_READER_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          auth="$(printf 'x-access-token:%s' "$SOURCE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+          mkdir private-src
+          if ! (cd private-src && git init && git fetch --no-tags --depth=1 "https://github.com/$SOURCE_REPO.git" refs/heads/release/beta && git checkout --detach FETCH_HEAD) > "$RUNNER_TEMP/fetch.log" 2>&1; then
+            echo "::error::Private source fetch failed"
+            exit 1
+          fi
+          test -f private-src/ci/release/build-signed-beta.py
+
+      - name: Configure JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=3 "platforms;android-37.0" "build-tools;37.0.0" > "$RUNNER_TEMP/sdk.log" 2>&1; then
+            echo "::error::SDK setup failed"
+            exit 1
+          fi
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+
+      - name: Build and verify private package
+        working-directory: private-src
+        shell: bash
+        env:
+          MX_READER_SIGNING_BUNDLE: ${{ secrets.MX_READER_SIGNING_BUNDLE }}
+          MX_READER_CERT_SHA256: ${{ vars.MX_READER_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          if ! python3 ci/release/build-signed-beta.py > "$RUNNER_TEMP/build-private.log" 2>&1; then
+            echo "::error::Private build or signing verification failed"
+            exit 1
+          fi
+          echo "Build and verification passed"
+
+      - name: Publish privately
+        working-directory: private-src
+        shell: bash
+        env:
+          SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
+          GH_TOKEN: ${{ secrets.BRIDGE_RESULT_TOKEN }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/private-release"
+          tag="$(jq -er .tag "$dir/release.json")"
+          commit="$(jq -er .commit "$dir/release.json")"
+          version="$(jq -er .version "$dir/release.json")"
+          notes="$(jq -er .notes "$dir/release.json")"
+          apk="$(jq -er .apk "$dir/release.json")"
+          source="$(jq -er .source "$dir/release.json")"
+          [[ "$(gh api "repos/$SOURCE_REPO" --jq .private 2>/dev/null)" == true ]]
+          [[ "$commit" == "$(git rev-parse HEAD)" ]]
+          [[ "$tag" == "v$version" ]]
+          if ! gh release create "$tag" --repo "$SOURCE_REPO" --target "$commit" --title "Beta $version" --notes-file "$notes" --prerelease "$apk" "$source" "$dir/CERT_SHA256.txt" "$dir/SHA256SUMS.txt" > "$RUNNER_TEMP/publish.log" 2>&1; then
+            echo "::error::Private release failed; existing releases are not overwritten"
+            exit 1
+          fi
+          echo "Private release published"
+
+      - name: Remove private files
+        if: always()
+        shell: bash
+        run: |
+          rm -rf private-src "$RUNNER_TEMP/private-release" "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/sdk.log" "$RUNNER_TEMP/build-private.log" "$RUNNER_TEMP/publish.log"
