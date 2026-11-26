@@ -1,0 +1,72 @@
+name: Job D
+on:
+  push:
+    branches: [main]
+    paths: [trigger/check.txt]
+permissions:
+  contents: read
+concurrency:
+  group: job-d
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout private validation candidate
+        shell: bash
+        env:
+          SOURCE_REPO: ${{ secrets.BRIDGE_REPO }}
+          SOURCE_TOKEN: ${{ secrets.MX_READER_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          candidate="$(gh api "repos/$GITHUB_REPOSITORY/contents/trigger/check.txt?ref=$GITHUB_SHA" --jq .content | base64 -d)"
+          [[ "$candidate" =~ ^[a-f0-9]{40}$ ]]
+          [[ -n "$SOURCE_REPO" && -n "$SOURCE_TOKEN" ]]
+          [[ "$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPO" --jq .private 2>/dev/null)" == true ]]
+          auth="$(printf 'x-access-token:%s' "$SOURCE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+          mkdir private-check
+          if ! (cd private-check && git init && git fetch --no-tags --depth=1 "https://github.com/$SOURCE_REPO.git" refs/heads/dev/qidian-structured-provider && git checkout --detach FETCH_HEAD && test "$(git rev-parse HEAD)" = "$candidate") > "$RUNNER_TEMP/check-fetch.log" 2>&1; then
+            echo "::error::Candidate checkout failed or branch changed"
+            exit 1
+          fi
+      - name: Configure JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Run isolated JVM tests
+        shell: bash
+        working-directory: private-check
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/private-check-gradle
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          if ! ./gradlew -p ci/structured-provider-check --no-daemon test > "$RUNNER_TEMP/check-test.log" 2>&1; then
+            echo "::error::Isolated JVM validation failed"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+          files = glob.glob('ci/structured-provider-check/build/test-results/test/TEST-*.xml')
+          roots = [ET.parse(p).getroot() for p in files]
+          tests = sum(int(r.attrib['tests']) for r in roots)
+          failures = sum(int(r.attrib['failures']) + int(r.attrib['errors']) for r in roots)
+          skipped = sum(int(r.attrib['skipped']) for r in roots)
+          if tests < 7 or failures or skipped:
+              raise SystemExit('Incomplete validation')
+          print(f'JVM tests: {tests}; failed: {failures}; skipped: {skipped}')
+          PY
+      - name: Remove private files
+        if: always()
+        shell: bash
+        run: |
+          rm -rf private-check "$RUNNER_TEMP/private-check-gradle" "$RUNNER_TEMP/check-fetch.log" "$RUNNER_TEMP/check-test.log"
