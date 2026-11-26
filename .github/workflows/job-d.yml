@@ -61,7 +61,7 @@ jobs:
           tests = sum(int(r.attrib['tests']) for r in roots)
           failures = sum(int(r.attrib['failures']) + int(r.attrib['errors']) for r in roots)
           skipped = sum(int(r.attrib['skipped']) for r in roots)
-          if tests < 7 or failures or skipped:
+          if tests < 11 or failures or skipped:
               raise SystemExit('Incomplete validation')
           print(f'JVM tests: {tests}; failed: {failures}; skipped: {skipped}')
           PY
